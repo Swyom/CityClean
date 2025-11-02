@@ -1,0 +1,52 @@
+import { Stack } from 'expo-router';
+import { useEffect } from 'react';
+import { useRouter } from 'expo-router';
+import { View, Text, Image, StyleSheet } from 'react-native';
+
+function SplashScreen() {
+  return (
+    <View style={styles.container}>
+      <Image source={require('../assets/images/logo.png')} style={styles.logo} />
+      <Text style={styles.title}>CleanCity</Text>
+      <Text style={styles.subtitle}>Making Cities Cleaner</Text>
+    </View>
+  );
+}
+
+export default function RootLayout() {
+  const router = useRouter();
+
+  useEffect(() => {
+    // Show splash for 2 seconds then go to login
+    setTimeout(() => {
+      router.replace('/login');
+    }, 2000);
+  }, []);
+
+  // Show splash screen while redirecting
+  return <SplashScreen />;
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#E8F5E8',
+  },
+  logo: {
+    width: 100,
+    height: 100,
+    marginBottom: 20,
+  },
+  title: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#2E7D32',
+  },
+  subtitle: {
+    fontSize: 16,
+    color: '#4CAF50',
+    marginTop: 10,
+  },
+});
