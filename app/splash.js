@@ -6,9 +6,13 @@ import { View, Text, Image, StyleSheet } from 'react-native';
 function SplashScreen() {
   return (
     <View style={styles.container}>
-      <Image source={require('../assets/images/logo.png')} style={styles.logo} />
+      <Image 
+        source={require('../assets/images/logo.png')} 
+        style={styles.logo} 
+        resizeMode="contain"
+      />
       <Text style={styles.title}>CleanCity</Text>
-      <Text style={styles.subtitle}>Making Cities Cleaner</Text>
+      <Text style={styles.subtitle}>Making Cities Cleaner, Together</Text>
     </View>
   );
 }
@@ -35,18 +39,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#E8F5E8',
   },
   logo: {
-    width: 100,
-    height: 100,
-    marginBottom: 20,
+    width: 220,
+    height: 220,
   },
   title: {
-    fontSize: 32,
+    fontSize: 36,
     fontWeight: 'bold',
     color: '#2E7D32',
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 18,
     color: '#4CAF50',
-    marginTop: 10,
+    fontWeight: '600',
   },
 });

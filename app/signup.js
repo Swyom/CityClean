@@ -1,10 +1,10 @@
 import { useRouter } from 'expo-router';
-import { 
-  View, 
-  Text, 
-  TextInput, 
-  TouchableOpacity, 
-  StyleSheet, 
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
   ScrollView,
   Dimensions,
   StatusBar,
@@ -89,11 +89,11 @@ export default function SignUpScreen() {
     try {
       // Simulate API call
       await new Promise(resolve => setTimeout(resolve, 1500));
-      
+
       // For demo purposes, we'll just navigate to home
       console.log('Sign up data:', formData);
       router.replace('/(tabs)/home');
-      
+
     } catch (error) {
       Alert.alert('Sign Up Failed', error.message || 'Something went wrong. Please try again.');
     } finally {
@@ -118,28 +118,28 @@ export default function SignUpScreen() {
 
   return (
     <LinearGradient
-      colors={['#F8FDF8', '#E8F5E9', '#C8E6C9']}
+      colors={['#F8FDF8', '#afddb3ff', '#C8E6C9']}
       style={styles.gradientContainer}
     >
-      <KeyboardAvoidingView 
+      <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <StatusBar barStyle="dark-content" backgroundColor="#F8FDF8" />
-        <ScrollView 
+        <ScrollView
           contentContainerStyle={styles.scrollContainer}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          
+
           {/* Header Section */}
           <View style={styles.header}>
             <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
               <MaterialIcons name="arrow-back" size={scale(22)} color="#1B5E20" />
             </TouchableOpacity>
             <View style={styles.logoContainer}>
-              <Image 
-                source={require('../assets/images/logo.png')} 
+              <Image
+                source={require('../assets/images/logo.png')}
                 style={styles.logoImage}
                 resizeMode="contain"
               />
@@ -150,10 +150,10 @@ export default function SignUpScreen() {
 
           {/* Main Form Container */}
           <View style={styles.mainFormContainer}>
-            
+
             {/* Form Fields Container */}
             <View style={styles.fieldsContainer}>
-              
+
               {/* Full Name Input */}
               <View style={styles.inputGroup}>
                 <View style={[
@@ -235,15 +235,15 @@ export default function SignUpScreen() {
                     autoComplete="password-new"
                     editable={!isLoading}
                   />
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={styles.eyeIcon}
                     onPress={() => setShowPassword(!showPassword)}
                     disabled={isLoading}
                   >
-                    <MaterialIcons 
-                      name={showPassword ? "visibility" : "visibility-off"} 
-                      size={scale(20)} 
-                      color="#666" 
+                    <MaterialIcons
+                      name={showPassword ? "visibility" : "visibility-off"}
+                      size={scale(20)}
+                      color="#666"
                     />
                   </TouchableOpacity>
                 </View>
@@ -254,7 +254,7 @@ export default function SignUpScreen() {
 
             {/* Terms and Conditions */}
             <View style={styles.termsContainer}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.checkbox}
                 onPress={handleTermsToggle}
                 disabled={isLoading}
@@ -276,11 +276,11 @@ export default function SignUpScreen() {
             {errors.terms && <Text style={styles.errorText}>{errors.terms}</Text>}
 
             {/* Sign Up Button */}
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[
-                styles.signupButton, 
+                styles.signupButton,
                 (!agreeToTerms || isLoading) && styles.signupButtonDisabled
-              ]} 
+              ]}
               onPress={handleSignUp}
               disabled={!agreeToTerms || isLoading}
             >
