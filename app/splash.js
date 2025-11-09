@@ -7,7 +7,7 @@ function SplashScreen() {
   return (
     <View style={styles.container}>
       <Image 
-        source={require('../assets/images/logo.png')} 
+        source={require('../assets/images/logo3.png')} 
         style={styles.logo} 
         resizeMode="contain"
       />

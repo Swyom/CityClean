@@ -37,7 +37,7 @@ export default function LoginScreen() {
     setIsLoading(true);
     setTimeout(() => {
       setIsLoading(false);
-      router.replace('/(tabs)/home');
+      router.replace('/(tabs)');
     }, 1500);
   };
 
@@ -62,7 +62,7 @@ export default function LoginScreen() {
           <View style={styles.header}>
             <View style={styles.logoContainer}>
               <Image
-                source={require('../assets/images/logo.png')}
+                source={require('../assets/images/logo2.png')}
                 style={styles.logoImage}
                 resizeMode="contain"
               />
