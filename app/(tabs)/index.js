@@ -21,15 +21,16 @@ const AgricultureApp = () => {
   const [newsData, setNewsData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [userLocation, setUserLocation] = useState(null);
+  const [locationName, setLocationName] = useState('Getting location...');
   const fadeAnim = useState(new Animated.Value(0))[0];
   const slideAnim = useState(new Animated.Value(50))[0];
 
   // API Keys
   const NEWS_API_KEY = 'e432746d2b6b49afae88335182323aca';
-  const WEATHER_API_KEY = 'bd5e378503939ddaee76f12ad7a97608';
 
   useEffect(() => {
-    fetchData();
+    getUserLocation();
     animateScreen();
   }, []);
 
@@ -50,150 +51,265 @@ const AgricultureApp = () => {
     ]).start();
   };
 
-  const fetchData = async () => {
+  const getUserLocation = async () => {
+    try {
+      // Use IP-based location service as fallback
+      const ipResponse = await fetch('http://ip-api.com/json/');
+      const ipData = await ipResponse.json();
+      
+      if (ipData && ipData.lat && ipData.lon) {
+        setUserLocation({ latitude: ipData.lat, longitude: ipData.lon });
+        setLocationName(ipData.city || ipData.regionName || 'Your Location');
+        fetchData({ latitude: ipData.lat, longitude: ipData.lon });
+      } else {
+        // Fallback to default location (New Delhi)
+        setUserLocation({ latitude: 28.6139, longitude: 77.2090 });
+        setLocationName('New Delhi');
+        fetchData({ latitude: 28.6139, longitude: 77.2090 });
+      }
+    } catch (error) {
+      console.warn('Location detection failed:', error);
+      // Fallback to default location
+      setUserLocation({ latitude: 28.6139, longitude: 77.2090 });
+      setLocationName('New Delhi');
+      fetchData({ latitude: 28.6139, longitude: 77.2090 });
+    }
+  };
+
+  const fetchData = async (location = userLocation) => {
     try {
       setLoading(true);
       
-      // Fetch Weather Data
-      const weatherResponse = await fetch(
-        `https://api.weatherapi.com/v1/current.json?key=${WEATHER_API_KEY}&q=28.6139,77.2090&aqi=no`
-      );
-      
-      if (!weatherResponse.ok) {
-        throw new Error('Weather API failed');
-      }
-      
-      const weatherResult = await weatherResponse.json();
-      
-      // Fetch News Data
-      const newsResponse = await fetch(
-        `https://newsapi.org/v2/everything?q=agriculture+farming&language=en&sortBy=publishedAt&apiKey=${NEWS_API_KEY}`
-      );
-      
-      let newsResult;
-      if (newsResponse.ok) {
-        newsResult = await newsResponse.json();
-      } else {
-        // Fallback news data if API fails
-        newsResult = {
-          articles: [
-            {
-              title: 'Global Wheat Production Reaches New High',
-              source: { name: 'Agricultural Times' },
-              publishedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-            },
-            {
-              title: 'Sustainable Farming Practices Gain Traction',
-              source: { name: 'Farm Innovation' },
-              publishedAt: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
-            },
-            {
-              title: 'New Irrigation Technology Saves 30% Water',
-              source: { name: 'Tech Farming' },
-              publishedAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-            }
-          ]
-        };
+      if (!location) {
+        console.warn('No location available, using default');
+        location = { latitude: 28.6139, longitude: 77.2090 };
+        setLocationName('New Delhi');
       }
 
-      // Transform weather data
-      const transformedWeatherData = {
-        temperature: `${Math.round(weatherResult.current.temp_c)}°C`,
-        condition: weatherResult.current.condition.text,
-        humidity: `${weatherResult.current.humidity}%`,
-        rainChance: `${weatherResult.current.precip_mm > 0 ? '30%' : '10%'}`,
-        windSpeed: `${weatherResult.current.wind_kph} km/h`,
-        soilType: 'Loamy Soil',
-        soilMoisture: '42%',
-        temperatureTrend: weatherResult.current.temp_c > 25 ? 'rising' : 'stable',
-        pressure: `${weatherResult.current.pressure_mb} hPa`,
-        location: weatherResult.location.name,
-        feelsLike: `${Math.round(weatherResult.current.feelslike_c)}°C`,
-        uvIndex: weatherResult.current.uv,
-        visibility: `${weatherResult.current.vis_km} km`
-      };
-
-      // Transform news data
-      const transformedNewsData = newsResult.articles.slice(0, 3).map(article => ({
-        title: article.title,
-        location: article.source.name,
-        time: getTimeAgo(article.publishedAt),
-        category: getCategoryFromTitle(article.title)
-      }));
-
-      setWeatherData(transformedWeatherData);
-      setNewsData(transformedNewsData);
-      setLoading(false);
-      setRefreshing(false);
-
-    } catch (error) {
-      console.error('API Error:', error);
-      // Fallback to mock data if APIs fail
-      const mockWeatherData = {
-        temperature: '30°C',
-        condition: 'Partly Cloudy',
-        humidity: '65%',
-        rainChance: '20%',
-        windSpeed: '10 km/h',
-        soilType: 'Loamy Soil',
-        soilMoisture: '42%',
-        temperatureTrend: 'rising',
-        pressure: '1013 hPa',
-        location: 'New Delhi',
-        feelsLike: '32°C',
-        uvIndex: 5,
-        visibility: '10 km'
-      };
-
-      const mockNewsData = [
-        {
-          title: 'Global Wheat Production Reaches New High',
-          location: 'International Grain Council',
-          time: '2 hours ago',
-          category: 'Market News'
-        },
-        {
-          title: 'Sustainable Farming Practices Gain Traction',
-          location: 'Agricultural Innovation Summit',
-          time: '5 hours ago',
-          category: 'Innovation'
-        },
-        {
-          title: 'New Irrigation Technology Saves 30% Water',
-          location: 'FarmTech Conference',
-          time: '1 day ago',
-          category: 'Technology'
+      // Fetch Weather Data using user's location
+      let weatherResult;
+      try {
+        const weatherResponse = await fetch(
+          `https://api.open-meteo.com/v1/forecast?latitude=${location.latitude}&longitude=${location.longitude}&current=temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m,pressure_msl,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto`
+        );
+        
+        if (!weatherResponse.ok) {
+          throw new Error(`Weather API failed: ${weatherResponse.status}`);
         }
-      ];
+        
+        weatherResult = await weatherResponse.json();
+        console.log('Weather API Success:', weatherResult);
+      } catch (weatherError) {
+        console.warn('Weather API failed, using fallback:', weatherError);
+        weatherResult = null;
+      }
 
-      setWeatherData(mockWeatherData);
-      setNewsData(mockNewsData);
+      // Fetch News Data
+      let newsResult;
+      try {
+        const newsResponse = await fetch(
+          `https://newsapi.org/v2/everything?q=agriculture+farming+crops&language=en&pageSize=5&sortBy=publishedAt&apiKey=${NEWS_API_KEY}`
+        );
+        
+        if (!newsResponse.ok) {
+          throw new Error(`News API failed: ${newsResponse.status}`);
+        }
+        
+        newsResult = await newsResponse.json();
+        console.log('News API Success - Raw data:', newsResult);
+        
+        // Filter out future dates and ensure we have valid articles
+        if (newsResult.articles) {
+          const currentDate = new Date();
+          newsResult.articles = newsResult.articles.filter(article => {
+            if (!article.publishedAt) return false;
+            const articleDate = new Date(article.publishedAt);
+            return articleDate <= currentDate && article.title !== '[Removed]';
+          }).slice(0, 3);
+        }
+        
+      } catch (newsError) {
+        console.warn('News API failed, using fallback:', newsError);
+        newsResult = null;
+      }
+
+      // Use API data or fallback to mock data
+      const finalWeatherData = weatherResult ? transformWeatherData(weatherResult, locationName) : getMockWeatherData(locationName);
+      const finalNewsData = newsResult && newsResult.articles && newsResult.articles.length > 0 
+        ? transformNewsData(newsResult) 
+        : getMockNewsData();
+
+      setWeatherData(finalWeatherData);
+      setNewsData(finalNewsData);
+      
+    } catch (error) {
+      console.error('Overall fetch error:', error);
+      // Fallback to mock data
+      setWeatherData(getMockWeatherData(locationName));
+      setNewsData(getMockNewsData());
+    } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
-  const getTimeAgo = (dateString) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffInHours = Math.floor((now - date) / (1000 * 60 * 60));
+  const getWeatherCondition = (weatherCode) => {
+    // WMO Weather interpretation codes
+    const weatherCodes = {
+      0: 'Clear sky',
+      1: 'Mainly clear',
+      2: 'Partly cloudy',
+      3: 'Overcast',
+      45: 'Foggy',
+      48: 'Foggy',
+      51: 'Light drizzle',
+      53: 'Moderate drizzle',
+      55: 'Dense drizzle',
+      56: 'Light freezing drizzle',
+      57: 'Dense freezing drizzle',
+      61: 'Slight rain',
+      63: 'Moderate rain',
+      65: 'Heavy rain',
+      66: 'Light freezing rain',
+      67: 'Heavy freezing rain',
+      71: 'Slight snow',
+      73: 'Moderate snow',
+      75: 'Heavy snow',
+      77: 'Snow grains',
+      80: 'Slight rain showers',
+      81: 'Moderate rain showers',
+      82: 'Violent rain showers',
+      85: 'Slight snow showers',
+      86: 'Heavy snow showers',
+      95: 'Thunderstorm',
+      96: 'Thunderstorm with slight hail',
+      99: 'Thunderstorm with heavy hail'
+    };
+    return weatherCodes[weatherCode] || 'Partly cloudy';
+  };
+
+  const transformWeatherData = (weatherResult, location) => {
+    const current = weatherResult.current;
+    const daily = weatherResult.daily;
     
-    if (diffInHours < 1) return 'Just now';
-    if (diffInHours < 24) return `${diffInHours} hours ago`;
-    return `${Math.floor(diffInHours / 24)} days ago`;
+    // Calculate rain chance from precipitation probability
+    const rainChance = daily.precipitation_probability_max && daily.precipitation_probability_max[0] 
+      ? `${daily.precipitation_probability_max[0]}%` 
+      : (current.precipitation > 0 ? '30%' : '10%');
+
+    return {
+      temperature: `${Math.round(current.temperature_2m)}°C`,
+      condition: getWeatherCondition(current.weather_code),
+      humidity: `${current.relative_humidity_2m}%`,
+      rainChance: rainChance,
+      windSpeed: `${current.wind_speed_10m} km/h`,
+      soilType: 'Loamy Soil',
+      soilMoisture: '42%',
+      temperatureTrend: 'stable',
+      pressure: `${Math.round(current.pressure_msl)} hPa`,
+      location: location,
+      feelsLike: `${Math.round(current.temperature_2m + (current.relative_humidity_2m > 80 ? 3 : 2))}°C`,
+      uvIndex: 5,
+      visibility: '10 km',
+      highTemp: daily.temperature_2m_max ? `${Math.round(daily.temperature_2m_max[0])}°C` : '--°C',
+      lowTemp: daily.temperature_2m_min ? `${Math.round(daily.temperature_2m_min[0])}°C` : '--°C'
+    };
+  };
+
+  const transformNewsData = (newsResult) => {
+    if (!newsResult.articles || newsResult.articles.length === 0) {
+      return getMockNewsData();
+    }
+    
+    console.log('Transforming news data:', newsResult.articles);
+    
+    return newsResult.articles.slice(0, 3).map(article => ({
+      title: article.title || 'Agricultural Development Update',
+      location: article.source?.name || 'Agricultural News',
+      time: getTimeAgo(article.publishedAt),
+      category: getCategoryFromTitle(article.title)
+    }));
+  };
+
+  const getMockWeatherData = (location) => {
+    return {
+      temperature: '28°C',
+      condition: 'Sunny',
+      humidity: '65%',
+      rainChance: '10%',
+      windSpeed: '12 km/h',
+      soilType: 'Loamy Soil',
+      soilMoisture: '45%',
+      temperatureTrend: 'stable',
+      pressure: '1013 hPa',
+      location: location || 'Your Location',
+      feelsLike: '30°C',
+      uvIndex: 6,
+      visibility: '12 km',
+      highTemp: '32°C',
+      lowTemp: '25°C'
+    };
+  };
+
+  const getMockNewsData = () => {
+    return [
+      {
+        title: 'Global Wheat Production Reaches New High This Season',
+        location: 'International Grain Council',
+        time: '2 hours ago',
+        category: 'Market News'
+      },
+      {
+        title: 'Sustainable Farming Practices Gain Traction Worldwide',
+        location: 'Agricultural Innovation Summit',
+        time: '5 hours ago',
+        category: 'Innovation'
+      },
+      {
+        title: 'New Smart Irrigation Technology Saves 40% Water Usage',
+        location: 'FarmTech Conference',
+        time: '1 day ago',
+        category: 'Technology'
+      }
+    ];
+  };
+
+  const getTimeAgo = (dateString) => {
+    if (!dateString) return 'Recently';
+    
+    try {
+      const date = new Date(dateString);
+      const now = new Date();
+      
+      // If date is in future, return 'Recently'
+      if (date > now) return 'Recently';
+      
+      const diffInHours = Math.floor((now - date) / (1000 * 60 * 60));
+      
+      if (diffInHours < 1) return 'Just now';
+      if (diffInHours < 24) return `${diffInHours} hours ago`;
+      return `${Math.floor(diffInHours / 24)} days ago`;
+    } catch (error) {
+      return 'Recently';
+    }
   };
 
   const getCategoryFromTitle = (title) => {
-    if (title.toLowerCase().includes('tech') || title.toLowerCase().includes('irrigation')) 
+    if (!title) return 'Agriculture';
+    
+    const lowerTitle = title.toLowerCase();
+    if (lowerTitle.includes('tech') || lowerTitle.includes('irrigation') || lowerTitle.includes('digital') || lowerTitle.includes('smart')) 
       return 'Technology';
-    if (title.toLowerCase().includes('market') || title.toLowerCase().includes('production')) 
+    if (lowerTitle.includes('market') || lowerTitle.includes('production') || lowerTitle.includes('price') || lowerTitle.includes('tariff')) 
       return 'Market News';
+    if (lowerTitle.includes('sustainable') || lowerTitle.includes('organic') || lowerTitle.includes('eco') || lowerTitle.includes('climate')) 
+      return 'Sustainability';
     return 'Innovation';
   };
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchData();
+    getUserLocation();
   };
 
   const WeatherMetric = ({ icon, value, label }) => (
@@ -232,153 +348,124 @@ const AgricultureApp = () => {
     </View>
   );
 
-  // Improved Soil Health Gauge Component
-  const SoilHealthGauge = ({ title, value, level, color, optimalRange, unit }) => (
-    <LinearGradient
-      colors={['#F8FAFC', '#F1F5F9']}
-      style={styles.gaugeCard}
-    >
-      <View style={styles.gaugeHeader}>
-        <Text style={styles.gaugeTitle}>{title}</Text>
-        <View style={[styles.levelBadge, { backgroundColor: color }]}>
-          <Text style={styles.levelBadgeText}>{level}</Text>
-        </View>
+  // Professional Soil Composition Bar Chart
+  const SoilCompositionBarChart = ({ data, title }) => (
+    <View style={styles.soilChartContainer}>
+      <Text style={styles.chartTitle}>{title}</Text>
+      <View style={styles.chartGrid}>
+        {[0, 20, 40, 60, 80, 100].map((value) => (
+          <View key={value} style={styles.gridLine}>
+            <Text style={styles.gridText}>{value}%</Text>
+          </View>
+        ))}
       </View>
-      
-      <View style={styles.gaugeWrapper}>
-        <View style={styles.gaugeBackground}>
-          <LinearGradient
-            colors={['#EF4444', '#F59E0B', '#10B981']}
-            style={styles.gaugeGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-          />
-          <View style={[styles.gaugeNeedle, { left: `${value}%` }]} />
-          <View style={styles.gaugeMarker} />
-        </View>
-        
-        <View style={styles.gaugeLabels}>
-          <Text style={styles.gaugeLabel}>0%</Text>
-          <Text style={styles.gaugeLabel}>50%</Text>
-          <Text style={styles.gaugeLabel}>100%</Text>
-        </View>
+      <View style={styles.barsContainer}>
+        {data.map((item, index) => (
+          <View key={index} style={styles.barColumn}>
+            <View style={styles.barWrapper}>
+              <LinearGradient
+                colors={item.colors || ['#8B4513', '#A0522D']}
+                style={[styles.compositionBar, { height: `${item.value}%` }]}
+                start={{ x: 0, y: 1 }}
+                end={{ x: 0, y: 0 }}
+              >
+                <Text style={styles.barValue}>{item.value}%</Text>
+              </LinearGradient>
+            </View>
+            <View style={styles.barLabelContainer}>
+              <Text style={styles.barLabel}>{item.label}</Text>
+              <Text style={styles.barSubLabel}>{item.optimal}</Text>
+            </View>
+          </View>
+        ))}
       </View>
-      
-      <View style={styles.gaugeInfo}>
-        <Text style={styles.gaugeValue}>{value}{unit}</Text>
-        <Text style={styles.optimalRange}>Optimal: {optimalRange}</Text>
-      </View>
-    </LinearGradient>
+    </View>
   );
 
-  // Improved Nutrient Chart Component
-  const NutrientChart = () => (
-    <LinearGradient
-      colors={['#F8FAFC', '#F1F5F9']}
-      style={styles.nutrientChartCard}
-    >
-      <Text style={styles.chartTitle}>Nutrient Levels</Text>
-      
-      <View style={styles.chartBars}>
-        <View style={styles.nutrientBar}>
-          <View style={styles.barInfo}>
-            <Text style={styles.nutrientName}>Nitrogen (N)</Text>
-            <Text style={styles.nutrientValue}>85%</Text>
-          </View>
-          <View style={styles.barContainer}>
-            <LinearGradient
-              colors={['#10B981', '#059669']}
-              style={[styles.barFill, { width: '85%' }]}
-            />
-          </View>
-          <Text style={[styles.nutrientStatus, styles.highStatus]}>High</Text>
+  // Professional Solid Gauge Component
+  const SolidGauge = ({ value, label, optimalRange, unit = '%', color = '#2E8B57' }) => {
+    const percentage = Math.min(Math.max(value, 0), 100);
+    
+    return (
+      <View style={styles.gaugeContainer}>
+        <View style={styles.gaugeHeader}>
+          <Text style={styles.gaugeLabel}>{label}</Text>
+          <Text style={styles.gaugeValue}>{value}{unit}</Text>
         </View>
-        
-        <View style={styles.nutrientBar}>
-          <View style={styles.barInfo}>
-            <Text style={styles.nutrientName}>Phosphorus (P)</Text>
-            <Text style={styles.nutrientValue}>60%</Text>
-          </View>
-          <View style={styles.barContainer}>
+        <View style={styles.gaugeWrapper}>
+          <View style={styles.gaugeTrack}>
             <LinearGradient
-              colors={['#F59E0B', '#D97706']}
-              style={[styles.barFill, { width: '60%' }]}
+              colors={['#E2E8F0', '#F1F5F9']}
+              style={styles.gaugeBackground}
             />
+            <View style={[styles.gaugeFill, { width: `${percentage}%`, backgroundColor: color }]} />
+            <View style={styles.gaugeOptimalRange}>
+              <View style={[styles.optimalMarker, { left: `${optimalRange.min}%` }]} />
+              <View style={[styles.optimalMarker, { left: `${optimalRange.max}%` }]} />
+            </View>
           </View>
-          <Text style={[styles.nutrientStatus, styles.mediumStatus]}>Medium</Text>
+          <View style={styles.gaugeScale}>
+            <Text style={styles.scaleText}>0{unit}</Text>
+            <Text style={styles.scaleText}>50{unit}</Text>
+            <Text style={styles.scaleText}>100{unit}</Text>
+          </View>
         </View>
-        
-        <View style={styles.nutrientBar}>
-          <View style={styles.barInfo}>
-            <Text style={styles.nutrientName}>Potassium (K)</Text>
-            <Text style={styles.nutrientValue}>75%</Text>
+        <View style={styles.gaugeStatus}>
+          <Text style={styles.optimalRangeText}>
+            Optimal: {optimalRange.min}{unit} - {optimalRange.max}{unit}
+          </Text>
+          <View style={[
+            styles.statusBadge,
+            { backgroundColor: getStatusColor(value, optimalRange) }
+          ]}>
+            <Text style={styles.statusText}>
+              {getStatusText(value, optimalRange)}
+            </Text>
           </View>
-          <View style={styles.barContainer}>
-            <LinearGradient
-              colors={['#4ECDC4', '#2E8B57']}
-              style={[styles.barFill, { width: '75%' }]}
-            />
-          </View>
-          <Text style={[styles.nutrientStatus, styles.optimalStatus]}>Optimal</Text>
         </View>
       </View>
-      
-      <View style={styles.chartLegend}>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: '#10B981' }]} />
-          <Text style={styles.legendText}>High</Text>
-        </View>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: '#F59E0B' }]} />
-          <Text style={styles.legendText}>Medium</Text>
-        </View>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: '#4ECDC4' }]} />
-          <Text style={styles.legendText}>Optimal</Text>
-        </View>
-      </View>
-    </LinearGradient>
-  );
+    );
+  };
 
-  // Soil Health Score Component
-  const SoilHealthScore = () => (
-    <LinearGradient
-      colors={['#2E8B57', '#3CB371']}
-      style={styles.healthScoreCard}
-    >
-      <Text style={styles.scoreTitle}>Soil Health Score</Text>
-      <View style={styles.scoreCircle}>
-        <Text style={styles.scoreValue}>78</Text>
-        <Text style={styles.scoreLabel}>/100</Text>
-      </View>
-      <Text style={styles.scoreDescription}>Good - Well balanced soil composition</Text>
-      <View style={styles.scoreBreakdown}>
-        <View style={styles.scoreItem}>
-          <Text style={styles.scoreItemLabel}>Moisture</Text>
-          <Text style={styles.scoreItemValue}>85%</Text>
-        </View>
-        <View style={styles.scoreItem}>
-          <Text style={styles.scoreItemLabel}>Nutrients</Text>
-          <Text style={styles.scoreItemValue}>72%</Text>
-        </View>
-        <View style={styles.scoreItem}>
-          <Text style={styles.scoreItemLabel}>pH Level</Text>
-          <Text style={styles.scoreItemValue}>80%</Text>
-        </View>
-      </View>
-    </LinearGradient>
-  );
+  const getStatusColor = (value, optimalRange) => {
+    if (value >= optimalRange.min && value <= optimalRange.max) return '#10B981';
+    if (value < optimalRange.min - 10 || value > optimalRange.max + 10) return '#EF4444';
+    return '#F59E0B';
+  };
+
+  const getStatusText = (value, optimalRange) => {
+    if (value >= optimalRange.min && value <= optimalRange.max) return 'Optimal';
+    if (value < optimalRange.min) return 'Low';
+    return 'High';
+  };
 
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
         <View style={styles.loadingContent}>
           <View style={styles.loadingSpinner}></View>
-          <Text style={styles.loadingText}>Loading Farm Data...</Text>
+          <Text style={styles.loadingText}>Getting your location...</Text>
+          <Text style={styles.locationSubtext}>Fetching local weather data</Text>
         </View>
       </View>
     );
   }
+
+  // Soil composition data
+  const soilCompositionData = [
+    { label: 'Sand', value: 40, optimal: '40-60%', colors: ['#F4A460', '#D2691E'] },
+    { label: 'Silt', value: 30, optimal: '20-40%', colors: ['#DEB887', '#CD853F'] },
+    { label: 'Clay', value: 20, optimal: '15-25%', colors: ['#8B4513', '#A0522D'] },
+    { label: 'Organic', value: 10, optimal: '5-10%', colors: ['#654321', '#8B4513'] }
+  ];
+
+  // Soil health metrics
+  const soilHealthMetrics = [
+    { label: 'Moisture Level', value: 65, unit: '%', optimalRange: { min: 40, max: 70 }, color: '#3B82F6' },
+    { label: 'pH Balance', value: 6.8, unit: '', optimalRange: { min: 6.0, max: 7.0 }, color: '#10B981' },
+    { label: 'Nitrogen', value: 85, unit: 'ppm', optimalRange: { min: 50, max: 100 }, color: '#8B4513' },
+    { label: 'Organic Matter', value: 4.2, unit: '%', optimalRange: { min: 3, max: 5 }, color: '#D2691E' }
+  ];
 
   return (
     <View style={styles.container}>
@@ -396,6 +483,8 @@ const AgricultureApp = () => {
           />
         }
       >
+        {/* Top Padding for Weather Section */}
+        <View style={styles.topPadding} />
         
         {/* Weather Header */}
         <Animated.View 
@@ -415,10 +504,17 @@ const AgricultureApp = () => {
           >
             <View style={styles.weatherHeaderContent}>
               <View style={styles.weatherMain}>
-                <Text style={styles.temperature}>{weatherData.temperature}</Text>
-                <Text style={styles.weatherCondition}>{weatherData.condition}</Text>
-                <View style={styles.locationContainer}>
-                  <Text style={styles.locationText}>📍 {weatherData.location} • Wheat Field</Text>
+                <Text style={styles.temperature}>{weatherData?.temperature || '--°C'}</Text>
+                <Text style={styles.weatherCondition}>{weatherData?.condition || 'Loading...'}</Text>
+                <View style={styles.locationRow}>
+                  <Text style={styles.locationIcon}>📍</Text>
+                  <Text style={styles.locationText}>
+                    {weatherData?.location || 'Getting location...'} • Wheat Field
+                  </Text>
+                </View>
+                <View style={styles.tempRange}>
+                  <Text style={styles.tempRangeText}>H: {weatherData?.highTemp || '--°C'}</Text>
+                  <Text style={styles.tempRangeText}>L: {weatherData?.lowTemp || '--°C'}</Text>
                 </View>
               </View>
               <View style={styles.cropIndicator}>
@@ -442,16 +538,16 @@ const AgricultureApp = () => {
             }
           ]}
         >
-          <WeatherMetric icon="💧" value={weatherData.humidity} label="Humidity" />
-          <WeatherMetric icon="🌧️" value={weatherData.rainChance} label="Rain" />
-          <WeatherMetric icon="💨" value={weatherData.windSpeed} label="Wind" />
-          <WeatherMetric icon="🌱" value={weatherData.soilMoisture} label="Soil Moist" />
+          <WeatherMetric icon="💧" value={weatherData?.humidity || '--%'} label="Humidity" />
+          <WeatherMetric icon="🌧️" value={weatherData?.rainChance || '--%'} label="Rain" />
+          <WeatherMetric icon="💨" value={weatherData?.windSpeed || '-- km/h'} label="Wind" />
+          <WeatherMetric icon="🌱" value={weatherData?.soilMoisture || '--%'} label="Soil Moist" />
         </Animated.View>
 
         {/* Main Content */}
         <View style={styles.content}>
           
-          {/* Today's Weather Card */}
+          {/* Professional Soil Analysis Card */}
           <Animated.View 
             style={[
               styles.card,
@@ -463,113 +559,55 @@ const AgricultureApp = () => {
           >
             <View style={styles.cardContent}>
               <View style={styles.cardHeader}>
-                <Text style={styles.cardTitle}>Today's Overview</Text>
-                <View style={styles.soilBadge}>
-                  <Text style={styles.soilBadgeText}>{weatherData.soilType}</Text>
+                <Text style={styles.cardTitle}>Soil Analysis</Text>
+                <View style={styles.soilTypeBadge}>
+                  <Text style={styles.soilTypeBadgeText}>Loamy Soil</Text>
                 </View>
               </View>
               
-              <View style={styles.detailedMetrics}>
-                <View style={styles.metricRow}>
-                  <Text style={styles.metricName}>Feels Like</Text>
-                  <Text style={styles.metricValue}>{weatherData.feelsLike}</Text>
-                </View>
-                <View style={styles.dividerLine} />
-                <View style={styles.metricRow}>
-                  <Text style={styles.metricName}>UV Index</Text>
-                  <Text style={styles.metricValue}>{weatherData.uvIndex} ({weatherData.uvIndex > 6 ? 'High' : 'Moderate'})</Text>
-                </View>
-                <View style={styles.dividerLine} />
-                <View style={styles.metricRow}>
-                  <Text style={styles.metricName}>Visibility</Text>
-                  <Text style={styles.metricValue}>{weatherData.visibility}</Text>
-                </View>
-                <View style={styles.dividerLine} />
-                <View style={styles.metricRow}>
-                  <Text style={styles.metricName}>Pressure</Text>
-                  <Text style={styles.metricValue}>{weatherData.pressure}</Text>
+              {/* Soil Composition Bar Chart */}
+              <SoilCompositionBarChart 
+                data={soilCompositionData} 
+                title="Soil Composition Analysis" 
+              />
+
+              {/* Soil Health Gauges */}
+              <View style={styles.gaugesSection}>
+                <Text style={styles.sectionTitle}>Soil Health Metrics</Text>
+                <View style={styles.gaugesGrid}>
+                  {soilHealthMetrics.map((metric, index) => (
+                    <SolidGauge
+                      key={index}
+                      value={metric.value}
+                      label={metric.label}
+                      unit={metric.unit}
+                      optimalRange={metric.optimalRange}
+                      color={metric.color}
+                    />
+                  ))}
                 </View>
               </View>
-            </View>
-          </Animated.View>
 
-          {/* Soil Health Analysis - Improved Graphical Version */}
-          <Animated.View 
-            style={[
-              styles.card,
-              {
-                opacity: fadeAnim,
-                transform: [{ translateY: slideAnim }]
-              }
-            ]}
-          >
-            <View style={styles.cardContent}>
-              <Text style={styles.cardTitle}>Soil Health Analysis</Text>
-              
-              {/* Soil Health Score */}
-              <SoilHealthScore />
-
-              {/* Graphical Soil Metrics */}
-              <View style={styles.graphicalMetrics}>
-                <SoilHealthGauge 
-                  title="Moisture Level" 
-                  value={42} 
-                  level="Optimal" 
-                  color="#4ECDC4"
-                  optimalRange="40-60%"
-                  unit="%"
-                />
-                <SoilHealthGauge 
-                  title="pH Balance" 
-                  value={65} 
-                  level="Good" 
-                  color="#10B981"
-                  optimalRange="6.0-7.0"
-                  unit=""
-                />
-                <SoilHealthGauge 
-                  title="Organic Matter" 
-                  value={35} 
-                  level="Low" 
-                  color="#F59E0B"
-                  optimalRange="3-5%"
-                  unit="%"
-                />
-              </View>
-
-              {/* Nutrient Chart */}
-              <NutrientChart />
-
-              {/* Recommendations */}
-              <View style={styles.recommendationContainer}>
-                <View style={styles.recommendationItem}>
-                  <LinearGradient
-                    colors={['#4ECDC4', '#2E8B57']}
-                    style={styles.recommendationIcon}
-                  >
-                    <Text style={styles.iconText}>💦</Text>
-                  </LinearGradient>
-                  <View style={styles.recommendationText}>
-                    <Text style={styles.recommendationTitle}>Irrigation Schedule</Text>
-                    <Text style={styles.recommendationDesc}>Water lightly tonight between 8-10 PM</Text>
+              {/* Soil Summary */}
+              <View style={styles.soilSummary}>
+                <View style={styles.summaryHeader}>
+                  <Text style={styles.summaryTitle}>Soil Health Summary</Text>
+                  <View style={styles.healthScore}>
+                    <Text style={styles.healthScoreValue}>78</Text>
+                    <Text style={styles.healthScoreLabel}>/100</Text>
                   </View>
                 </View>
-                
-                <View style={styles.recommendationItem}>
-                  <LinearGradient
-                    colors={['#4ECDC4', '#2E8B57']}
-                    style={styles.recommendationIcon}
-                  >
-                    <Text style={styles.iconText}>🛡️</Text>
-                  </LinearGradient>
-                  <View style={styles.recommendationText}>
-                    <Text style={styles.recommendationTitle}>Disease Risk Assessment</Text>
-                    <Text style={styles.recommendationDesc}>Low probability - Optimal conditions</Text>
-                  </View>
+                <Text style={styles.summaryText}>
+                  Your soil shows good composition with optimal moisture levels. 
+                  Consider adding organic matter to improve nutrient retention.
+                </Text>
+                <View style={styles.recommendation}>
+                  <Text style={styles.recommendationTitle}>💡 Recommendation</Text>
+                  <Text style={styles.recommendationText}>
+                    Apply compost fertilizer in the next 7 days to maintain optimal nutrient levels.
+                  </Text>
                 </View>
               </View>
-
-              <Text style={styles.nutrientNote}>Monitor phosphorus levels for optimal growth. Next soil test in 15 days.</Text>
             </View>
           </Animated.View>
 
@@ -590,11 +628,11 @@ const AgricultureApp = () => {
                 </View>
                 <View style={styles.alertTitleContainer}>
                   <Text style={styles.alertTitle}>AI Advisor Alert</Text>
-                  <Text style={styles.alertSubtitle}>Priority: High</Text>
+                  <Text style={styles.alertSubtitle}>Location-based Analysis</Text>
                 </View>
               </View>
               <Text style={styles.alertMessage}>
-                ⚠️ {weatherData.rainChance > '20%' ? 'Rain expected tomorrow. Ensure proper drainage.' : 'Optimal weather conditions for the next 3 days.'}
+                ⚠️ {weatherData?.rainChance > '20%' ? `Rain expected (${weatherData.rainChance}) in your area. Ensure proper drainage.` : 'Optimal weather conditions for farming in your location.'}
               </Text>
               <View style={styles.alertActions}>
                 <TouchableOpacity style={styles.alertButton}>
@@ -639,7 +677,7 @@ const AgricultureApp = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f0f8f4',
+    backgroundColor: '#f8fafc',
   },
   scrollView: {
     flex: 1,
@@ -647,11 +685,14 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 30,
   },
+  topPadding: {
+    height: 10,
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f0f8f4',
+    backgroundColor: '#f8fafc',
     paddingHorizontal: 20,
   },
   loadingContent: {
@@ -672,14 +713,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#64748B',
     fontWeight: '500',
+    marginBottom: 8,
+  },
+  locationSubtext: {
+    fontSize: 14,
+    color: '#94A3B8',
+    fontWeight: '400',
   },
   weatherHeader: {
     width: width - 32,
-    height: 240,
-    marginTop: 15,
+    height: 260,
+    marginTop: 10,
     marginHorizontal: 16,
-    borderTopLeftRadius: 25,
-    borderTopRightRadius: 25,
+    borderRadius: 25,
     overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 12 },
@@ -690,42 +736,65 @@ const styles = StyleSheet.create({
   weatherGradient: {
     flex: 1,
     paddingHorizontal: 24,
-    paddingTop: 25,
-    paddingBottom: 20,
+    paddingVertical: 25,
     justifyContent: 'center',
   },
   weatherHeaderContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
   },
   weatherMain: {
     flex: 1,
+    paddingRight: 10,
   },
   temperature: {
-    fontSize: 46,
+    fontSize: 48,
     fontWeight: '300',
     color: 'white',
     letterSpacing: -1,
     textShadowColor: 'rgba(0, 0, 0, 0.3)',
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 4,
+    marginBottom: 4,
   },
   weatherCondition: {
     fontSize: 18,
     color: '#E8F5E8',
     fontWeight: '500',
-    marginTop: 16,
-    paddingTop: 2,
-    marginBottom: 3,
+    marginBottom: 12,
     textShadowColor: 'rgba(0, 0, 0, 0.2)',
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 2,
   },
-  locationContainer: {
-    marginTop: 6,
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  locationIcon: {
+    fontSize: 14,
+    color: '#C8E6C9',
+    marginRight: 6,
+    textShadowColor: 'rgba(0, 0, 0, 0.2)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
   locationText: {
+    fontSize: 15,
+    color: '#C8E6C9',
+    fontWeight: '500',
+    textShadowColor: 'rgba(0, 0, 0, 0.2)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+    flex: 1,
+  },
+  tempRange: {
+    flexDirection: 'row',
+    marginTop: 4,
+    gap: 16,
+  },
+  tempRangeText: {
     fontSize: 14,
     color: '#C8E6C9',
     fontWeight: '500',
@@ -735,10 +804,11 @@ const styles = StyleSheet.create({
   },
   cropIndicator: {
     alignItems: 'flex-end',
+    paddingTop: 4,
   },
   cropIcon: {
-    fontSize: 34,
-    marginBottom: 6,
+    fontSize: 36,
+    marginBottom: 8,
     textShadowColor: 'rgba(0, 0, 0, 0.3)',
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 3,
@@ -751,6 +821,7 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0, 0, 0, 0.2)',
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 2,
+    textAlign: 'right',
   },
   growthIndicator: {
     width: 75,
@@ -768,7 +839,7 @@ const styles = StyleSheet.create({
   statsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: -25,
+    marginTop: -20,
     marginHorizontal: 16,
     marginBottom: 25,
     gap: 10,
@@ -830,7 +901,7 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 5,
     borderWidth: 1,
-    borderColor: '#f0f8f4',
+    borderColor: '#f1f5f9',
     width: '100%',
     minHeight: 200,
   },
@@ -841,7 +912,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 20,
+    marginBottom: 24,
   },
   cardTitle: {
     fontSize: 20,
@@ -850,66 +921,119 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 12,
   },
-  soilBadge: {
-    backgroundColor: '#ECFDF5',
+  soilTypeBadge: {
+    backgroundColor: '#FEF3C7',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#D1FAE5',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 1,
+    borderColor: '#FDE68A',
   },
-  soilBadgeText: {
+  soilTypeBadgeText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#065F46',
+    color: '#92400E',
   },
-  detailedMetrics: {
-    gap: 14,
+  // Soil Composition Bar Chart Styles
+  soilChartContainer: {
+    marginBottom: 24,
+    backgroundColor: '#F8FAFC',
+    padding: 20,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
   },
-  metricRow: {
+  chartTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1E293B',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  chartGrid: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 3,
+    marginBottom: 12,
+    paddingHorizontal: 8,
   },
-  metricName: {
-    fontSize: 15,
+  gridLine: {
+    alignItems: 'center',
+  },
+  gridText: {
+    fontSize: 10,
+    color: '#94A3B8',
+    fontWeight: '500',
+  },
+  barsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    height: 160,
+  },
+  barColumn: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  barWrapper: {
+    height: '100%',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 6,
+  },
+  compositionBar: {
+    borderRadius: 8,
+    minHeight: 24,
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    paddingVertical: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  barValue: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: 'white',
+    textShadowColor: 'rgba(0,0,0,0.3)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+  },
+  barLabelContainer: {
+    marginTop: 8,
+    alignItems: 'center',
+  },
+  barLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#1E293B',
+    marginBottom: 2,
+  },
+  barSubLabel: {
+    fontSize: 10,
     color: '#64748B',
     fontWeight: '500',
   },
-  metricValue: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#1E293B',
+  // Solid Gauge Styles
+  gaugesSection: {
+    marginBottom: 24,
   },
-  risingTrend: {
-    color: '#10B981',
+  sectionTitle: {
+    fontSize: 18,
     fontWeight: '700',
-  },
-  dividerLine: {
-    height: 1,
-    backgroundColor: '#f1f5f9',
-    marginVertical: 2,
-  },
-  // Improved Graphical Soil Health Styles
-  graphicalMetrics: {
-    gap: 16,
+    color: '#1E293B',
     marginBottom: 20,
+    textAlign: 'center',
   },
-  gaugeCard: {
+  gaugesGrid: {
+    gap: 20,
+  },
+  gaugeContainer: {
+    backgroundColor: '#F8FAFC',
     padding: 16,
-    borderRadius: 16,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
   },
   gaugeHeader: {
     flexDirection: 'row',
@@ -917,278 +1041,135 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
   },
-  gaugeTitle: {
-    fontSize: 15,
+  gaugeLabel: {
+    fontSize: 14,
     fontWeight: '600',
     color: '#1E293B',
-  },
-  levelBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  levelBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: 'white',
-  },
-  gaugeWrapper: {
-    marginBottom: 8,
-  },
-  gaugeBackground: {
-    height: 24,
-    borderRadius: 12,
-    overflow: 'hidden',
-    marginBottom: 6,
-    backgroundColor: '#E2E8F0',
-  },
-  gaugeGradient: {
-    width: '100%',
-    height: '100%',
-  },
-  gaugeNeedle: {
-    position: 'absolute',
-    top: -4,
-    width: 3,
-    height: 32,
-    backgroundColor: '#1E293B',
-    borderRadius: 2,
-    transform: [{ translateX: -1.5 }],
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  gaugeMarker: {
-    position: 'absolute',
-    top: 0,
-    left: '50%',
-    width: 2,
-    height: '100%',
-    backgroundColor: 'rgba(255,255,255,0.5)',
-    transform: [{ translateX: -1 }],
-  },
-  gaugeLabels: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 2,
-  },
-  gaugeLabel: {
-    fontSize: 10,
-    color: '#64748B',
-    fontWeight: '500',
-  },
-  gaugeInfo: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
   },
   gaugeValue: {
     fontSize: 16,
     fontWeight: '700',
     color: '#1E293B',
   },
-  optimalRange: {
-    fontSize: 12,
-    color: '#64748B',
-  },
-  // Nutrient Chart Styles
-  nutrientChartCard: {
-    padding: 20,
-    borderRadius: 16,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  chartTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1E293B',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  chartBars: {
-    gap: 16,
-  },
-  nutrientBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  barInfo: {
-    flex: 1,
-  },
-  nutrientName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#475569',
-    marginBottom: 2,
-  },
-  nutrientValue: {
-    fontSize: 12,
-    color: '#64748B',
-    fontWeight: '500',
-  },
-  barContainer: {
-    flex: 2,
-    height: 12,
-    backgroundColor: '#F1F5F9',
-    borderRadius: 6,
-    overflow: 'hidden',
-  },
-  barFill: {
-    height: '100%',
-    borderRadius: 6,
-  },
-  nutrientStatus: {
-    fontSize: 12,
-    fontWeight: '700',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  highStatus: {
-    backgroundColor: '#D1FAE5',
-    color: '#065F46',
-  },
-  mediumStatus: {
-    backgroundColor: '#FEF3C7',
-    color: '#92400E',
-  },
-  optimalStatus: {
-    backgroundColor: '#CCFBF1',
-    color: '#0F766E',
-  },
-  chartLegend: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#E2E8F0',
-  },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  legendDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  legendText: {
-    fontSize: 12,
-    color: '#64748B',
-    fontWeight: '500',
-  },
-  // Soil Health Score Styles
-  healthScoreCard: {
-    padding: 20,
-    borderRadius: 20,
-    marginBottom: 20,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 4,
-  },
-  scoreTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: 'white',
+  gaugeWrapper: {
     marginBottom: 12,
   },
-  scoreCircle: {
+  gaugeTrack: {
+    height: 20,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 10,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  gaugeBackground: {
+    width: '100%',
+    height: '100%',
+  },
+  gaugeFill: {
+    position: 'absolute',
+    height: '100%',
+    borderRadius: 10,
+  },
+  gaugeOptimalRange: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+  },
+  optimalMarker: {
+    position: 'absolute',
+    width: 2,
+    height: '100%',
+    backgroundColor: '#1E293B',
+    opacity: 0.3,
+  },
+  gaugeScale: {
     flexDirection: 'row',
-    alignItems: 'baseline',
-    marginBottom: 8,
+    justifyContent: 'space-between',
+    marginTop: 4,
   },
-  scoreValue: {
-    fontSize: 48,
-    fontWeight: '300',
-    color: 'white',
-  },
-  scoreLabel: {
-    fontSize: 20,
-    color: 'rgba(255,255,255,0.8)',
+  scaleText: {
+    fontSize: 10,
+    color: '#94A3B8',
     fontWeight: '500',
   },
-  scoreDescription: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.9)',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  scoreBreakdown: {
+  gaugeStatus: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    width: '100%',
-  },
-  scoreItem: {
+    justifyContent: 'space-between',
     alignItems: 'center',
   },
-  scoreItemLabel: {
+  optimalRangeText: {
     fontSize: 12,
-    color: 'rgba(255,255,255,0.8)',
-    marginBottom: 4,
+    color: '#64748B',
+    fontWeight: '500',
   },
-  scoreItemValue: {
-    fontSize: 14,
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  statusText: {
+    fontSize: 10,
     fontWeight: '700',
     color: 'white',
   },
-  recommendationContainer: {
-    gap: 18,
-    marginBottom: 24,
+  // Soil Summary Styles
+  soilSummary: {
+    backgroundColor: '#F0FDF4',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#DCFCE7',
   },
-  recommendationItem: {
+  summaryHeader: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 16,
+    marginBottom: 8,
   },
-  recommendationIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  iconText: {
-    fontSize: 20,
-  },
-  recommendationText: {
-    flex: 1,
-  },
-  recommendationTitle: {
+  summaryTitle: {
     fontSize: 16,
     fontWeight: '700',
     color: '#1E293B',
-    marginBottom: 4,
   },
-  recommendationDesc: {
+  healthScore: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+  },
+  healthScoreValue: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#10B981',
+  },
+  healthScoreLabel: {
     fontSize: 14,
     color: '#64748B',
-    lineHeight: 20,
+    fontWeight: '500',
   },
-  nutrientNote: {
+  summaryText: {
+    fontSize: 14,
+    color: '#475569',
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  recommendation: {
+    backgroundColor: 'white',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#D1FAE5',
+  },
+  recommendationTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#065F46',
+    marginBottom: 4,
+  },
+  recommendationText: {
     fontSize: 13,
-    color: '#64748B',
-    fontStyle: 'italic',
-    marginTop: 16,
-    textAlign: 'center',
+    color: '#475569',
     lineHeight: 18,
   },
+  // Rest of the styles remain the same...
   alertCard: {
     backgroundColor: '#FEF3F2',
     borderRadius: 22,
@@ -1326,7 +1307,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginRight: 16,
     width: 280,
-    height: 250,
+    height: 280,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.08,
@@ -1336,7 +1317,7 @@ const styles = StyleSheet.create({
     borderColor: '#F1F5F9',
   },
   newsCardGradient: {
-    padding: 20,
+    padding: 10,
     height: '100%',
   },
   newsHeader: {

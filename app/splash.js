@@ -11,8 +11,8 @@ function SplashScreen() {
         style={styles.logo} 
         resizeMode="contain"
       />
-      <Text style={styles.title}>CleanCity</Text>
-      <Text style={styles.subtitle}>Making Cities Cleaner, Together</Text>
+      <Text style={styles.title}>SmartFarm</Text>
+      <Text style={styles.subtitle}> Smart Farming, Better Living </Text>
     </View>
   );
 }
@@ -39,8 +39,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#E8F5E8',
   },
   logo: {
-    width: 220,
-    height: 220,
+    width: 320,
+    height: 320,
   },
   title: {
     fontSize: 36,
